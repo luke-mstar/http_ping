@@ -1,0 +1,22 @@
+	      http_ping - measure HTTP latency
+
+http_ping runs an HTTP fetch every few seconds, timing how long it takes.
+See the manual entry for more details.
+
+Files in this distribution:
+
+    README		this
+    Makefile		guess
+    http_ping.c		source file
+    http_ping.1		manual entry
+    port.h		portability defines
+
+To build: If you're on a SysV-like machine (which includes old Linux systems
+but not new Linux systems), edit the Makefile and uncomment the SYSV_LIBS
+line.  If you're doing SSL, uncomment those lines too.  Otherwise, just do
+a make.
+
+Feedback is welcome - send bug reports, enhancements, checks, money
+orders, etc. to the addresses below.
+
+    Jef Poskanzer  jef@mail.acme.com  http://www.acme.com/jef/

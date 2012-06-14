@@ -1,0 +1,74 @@
+.TH http_ping 1 "03 April 2002"
+.SH NAME
+http_ping - measure HTTP latency
+.SH SYNOPSIS
+.B http_ping
+.RB [ -count
+.IR n ]
+.RB [ -interval
+.IR n ]
+.RB [ -quiet ]
+.RB [ -proxy
+.IR host:port ]
+.I url
+.SH DESCRIPTION
+.PP
+.I http_ping
+runs an HTTP fetch every few seconds, timing how long it takes.
+.PP
+Sample run:
+.nf
+  % http_ping http://www.example.com/
+  7816 bytes from http://www.example.com/: 246.602 ms (9.923c/23.074r/213.605d)
+  7816 bytes from http://www.example.com/: 189.997 ms (11.619c/22.971r/155.407d)
+  7816 bytes from http://www.example.com/: 190.463 ms (8.994c/25.091r/156.378d)
+  7816 bytes from http://www.example.com/: 190.07 ms (9.234c/23.9r/156.936d)
+  7816 bytes from http://www.example.com/: 190.706 ms (10.142c/46.579r/133.985d)
+  ^C
+  --- http://www.example.com/ http_ping statistics ---
+  5 fetches started, 5 completed (100%), 0 failures (0%), 0 timeouts (0%)
+  total    min/avg/max = 189.997/201.568/246.602 ms
+  connect  min/avg/max = 8.994/9.9824/11.619 ms
+  response min/avg/max = 22.971/28.323/46.579 ms
+  data     min/avg/max = 133.985/163.262/213.605 ms
+.fi
+.SH OPTIONS
+.TP
+.B -count
+Stop after the specified number of fetches.
+Without this option, http_ping will continue until interrupted.
+.TP
+.B -interval
+Wait the specified number of seconds between fetches.
+The default is five seconds.
+.TP
+.B -quiet
+Only display the summary info at the end.
+.TP
+.B -proxy
+Specifies a proxy host and port to use.
+.SH "SEE ALSO"
+http_load(1), http_get(1), ping(8)
+.SH AUTHOR
+Copyright © 1998,1999,2001,2002 by Jef Poskanzer <jef@mail.acme.com>.
+All rights reserved.
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
