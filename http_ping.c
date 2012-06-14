@@ -34,10 +34,12 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #include <errno.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <time.h>
 
 #ifdef USE_SSL
 #include <openssl/ssl.h>
@@ -58,6 +60,10 @@ static int url_protocol;
 static char url_host[5000];
 static unsigned short url_port;
 static char* url_filename;
+static char* request_data_file;
+/* static char* request_data; */
+static char* method;
+static char* vhost;
 
 /* Protocol symbols. */
 #define PROTO_HTTP 0
@@ -104,7 +110,10 @@ static long bytes;
 static char* argv0;
 static int count;
 static int interval;
+static int timeout;
+static int nagle;
 static int quiet;
+static int do_keepalive;
 static int do_proxy;
 static char* proxy_host;
 static unsigned short proxy_port;
@@ -126,6 +135,7 @@ static SSL_CTX* ssl_ctx = (SSL_CTX*) 0;
 /* Forwards. */
 static void usage( void );
 static void parse_url( void );
+static void parse_request_file( void );
 static void init_net( void );
 static int start_connection( void );
 static void lookup_address( char* hostname, unsigned short port );
@@ -149,30 +159,48 @@ main( int argc, char** argv )
     count = -1;
     interval = INTERVAL;
     quiet = 0;
+    nagle=0;
     do_proxy = 0;
+    do_keepalive = 0;
+    method = 0;
+    vhost = 0;
+    request_data_file = 0;
     while ( argn < argc && argv[argn][0] == '-' && argv[argn][1] != '\0' )
 	{
 	if ( strncmp( argv[argn], "-count", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
 	    {
 	    count = atoi( argv[++argn] );
 	    if ( count <= 0 )
-		{
-		(void) fprintf( stderr, "%s: count must be positive\n", argv0 );
-		exit( 1 );
-		}
+			{
+			(void) fprintf( stderr, "%s: count must be positive\n", argv0 );
+			exit( 1 );
+			}
 	    }
 	else if ( strncmp( argv[argn], "-interval", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
 	    {
 	    interval = atoi( argv[++argn] );
-	    if ( interval < 1 )
-		{
-		(void) fprintf( stderr, "%s: interval must be at least one\n", argv0 );
-		exit( 1 );
-		}
+	    if ( interval < 1 && interval )
+			{
+			(void) fprintf( stderr, "%s: interval will be zero when set to less than one\n", argv0 );
+			interval = 0;
+			}
+	    }
+	else if ( strncmp( argv[argn], "-timeout", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
+	    {
+	    timeout = atoi( argv[++argn] );
+	    if ( timeout < 1 )
+			{
+			(void) fprintf( stderr, "%s: timeout will be one second when set to less than one\n", argv0 );
+			timeout = 1;
+			}
 	    }
 	else if ( strncmp( argv[argn], "-quiet", strlen( argv[argn] ) ) == 0 )
 	    {
 	    quiet = 1;
+	    }
+	else if ( strncmp( argv[argn], "-nagle", strlen( argv[argn] ) ) == 0 )
+	    {
+	    nagle = 1;
 	    }
 	else if ( strncmp( argv[argn], "-proxy", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
 	    {
@@ -181,20 +209,41 @@ main( int argc, char** argv )
 	    proxy_host = argv[++argn];
 	    colon = strchr( proxy_host, ':' );
 	    if ( colon == (char*) 0 )
-		proxy_port = 80;
+	    	proxy_port = 80;
 	    else
-		{
-		proxy_port = (unsigned short) atoi( colon + 1 );
-		*colon = '\0';
-		}
+			{
+			proxy_port = (unsigned short) atoi( colon + 1 );
+			*colon = '\0';
+			}
 	    }
+	else if ( strncmp( argv[argn], "-method", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
+    	{
+		method = argv[++argn];
+		}
+	else if ( strncmp( argv[argn], "-vhost", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
+    	{
+		vhost = argv[++argn];
+		}
+	else if ( strncmp( argv[argn], "-file", strlen( argv[argn] ) ) == 0 && argn + 1 < argc )
+    	{
+		request_data_file = argv[++argn];
+		}
 	else
 	    usage();
-	++argn;
+		++argn;
 	}
-    if ( argn + 1 != argc )
-	usage();
-    url = argv[argn];
+    if (request_data_file)
+    	{
+        if ( argn != argc )
+        	usage();
+        parse_request_file();
+    	}
+    else
+    	{
+		if ( argn + 1 != argc )
+			usage();
+		url = argv[argn];
+		}
 
     /* Parse the URL. */
     parse_url();
@@ -239,7 +288,7 @@ main( int argc, char** argv )
 	if ( count > 0 )
 	    --count;
 	++count_started;
-	alarm( TIMEOUT );
+	alarm( timeout );
 	if ( ! start_connection() )
 	    ++count_failures;
 	else
@@ -279,14 +328,15 @@ main( int argc, char** argv )
 	alarm( 0 );
 	if ( count == 0 || terminate )
 	    break;
-	sleep( interval );
+	if ( interval )
+		sleep( interval );
 	}
 
     /* Report statistics. */
     (void) printf( "\n" );
-    (void) printf( "--- %s http_ping statistics ---\n", url );
+    (void) printf( "--- %s %s %s http_ping statistics ---\n", method, vhost, url );
     (void) printf(
-	"%d fetches started, %d completed (%d%%), %d failures (%d%%), %d timeouts (%d%%)\n",
+	"%d requests started, %d completed (%d%%), %d failures (%d%%), %d timeouts (%d%%)\n",
 	count_started, count_completed, count_completed * 100 / count_started,
 	count_failures, count_failures * 100 / count_started,
 	count_timeouts, count_timeouts * 100 / count_started );
@@ -318,10 +368,16 @@ main( int argc, char** argv )
 static void
 usage( void )
     {
-    (void) fprintf( stderr, "usage:  %s [-count n] [-interval n] [-quiet] [-proxy host:port] url\n", argv0 );
+    (void) fprintf( stderr,
+    		"usage:  %s [-count n] [-interval n] [-nagle] [-quiet] [-proxy host:port] [-method http_method] [-vhost vhost] url\n", argv0 );
     exit( 1 );
     }
 
+static void
+parse_request_file( void )
+	{
+		/* TODO */
+	}
 
 static void
 parse_url( void )
@@ -465,10 +521,10 @@ start_connection( void )
 	}
     else
 	b = snprintf(
-	    buf, sizeof(buf), "GET %.500s HTTP/1.0\r\n", url_filename );
-    b += snprintf( &buf[b], sizeof(buf) - b, "Host: %s\r\n", url_host );
+	    buf, sizeof(buf), "%s %.500s HTTP/1.1\r\n", method ? method : "GET", url_filename );
+    b += snprintf( &buf[b], sizeof(buf) - b, "Host: %s\r\n", vhost ? vhost : url_host );
     b += snprintf( &buf[b], sizeof(buf) - b, "User-Agent: http_ping\r\n" );
-    b += snprintf( &buf[b], sizeof(buf) - b, "\r\n" );
+    b += snprintf( &buf[b], sizeof(buf) - b, "Connection: Close\r\n\r\n" );
 
     /* Send the request. */
 #ifdef USE_SSL
@@ -617,6 +673,7 @@ static int
 open_client_socket( void )
     {
     int sockfd;
+    int flag = 1;
 
     sockfd = socket( sock_family, sock_type, sock_protocol );
     if ( sockfd < 0 )
@@ -624,6 +681,15 @@ open_client_socket( void )
 	perror( "socket" );
 	return -1;
 	}
+
+    if (!nagle)
+    	{
+		if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof flag) <0)
+			{
+			perror( "TCP_NODELAY" );
+			return -1;
+			}
+    	}
 
     if ( connect( sockfd, (struct sockaddr*) &sa, sa_len ) < 0 )
 	{
@@ -1102,6 +1168,7 @@ handle_read( void )
 		}
 	    }
 	}
+    return 1;
     }
 
 
